@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="admin/tool/lpsync/db" VERSION="20172403" COMMENT="XMLDB file for Moodle admin/tool/lpsync"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="tool_lpsync" COMMENT="General database configuration and mapping of required headers to external database headers.">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        
+        <FIELD NAME="type" TYPE="char" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Database type"/>
+        <FIELD NAME="host" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Host"/>
+        <FIELD NAME="user" TYPE="char" LENGTH="25" NOTNULL="false" SEQUENCE="false" COMMENT="Username"/>
+        <FIELD NAME="pass" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Password"/>
+        <FIELD NAME="name" TYPE="text" LENGTH="50" NOTNULL="false" SEQUENCE="false" COMMENT="Database name"/>
+        <FIELD NAME="table" TYPE="text" LENGTH="50" NOTNULL="false" SEQUENCE="false" COMMENT="Table"/>
+        
+        <FIELD NAME="parentidnumber" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false" COMMENT="Competencies are arranged in a tree. This field indicates which competency is the parent of the current row."/>
+        <FIELD NAME="idnumber" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false" COMMENT="A string that uniquely identifies this competency in this framework"/>
+        <FIELD NAME="shortname" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false" COMMENT="A short name for the competency"/>
+        <FIELD NAME="description" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false" COMMENT="A longer description for the competency"/>
+        <FIELD NAME="descriptionformat" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false" COMMENT="A number representing the format of the text in the description. Valid options are: 0 = Moodle format, 1 = HTML, 2 = Plain text, 3 = Wiki format, 4 = Markdown"/>
+        <FIELD NAME="scalevalues" TYPE="char" LENGTH="100" NOTNULL="false" SEQUENCE="false" COMMENT="Only required on the framework row. Defines a comma separated list of options used to grade the competencies"/>
+        <FIELD NAME="scaleconfiguration" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false" COMMENT="A json encoded object used to define the scale configuration."/>
+        
+        <FIELD NAME="ruletype" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false" COMMENT=""/>
+        <FIELD NAME="ruleoutcome" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false" COMMENT=""/>
+        <FIELD NAME="ruleconfig" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false" COMMENT=""/>
+        
+        <FIELD NAME="relatedidnumbers" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false" COMMENT="A comma separated list of id numbers belonging to competencies related to the current row"/>
+        <FIELD NAME="isframework" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false" COMMENT="Must be 1 for a single row in the framework which defines the name and description of the entire framework"/>
+        <FIELD NAME="taxonomy" TYPE="char" LENGTH="100" NOTNULL="false" SEQUENCE="false" COMMENT="Defined for the framework row, defines the lang string keys used to describe competencies at each level of the framework"/>
+     
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+    </TABLE>
+  </TABLES>
+</XMLDB>
