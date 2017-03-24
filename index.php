@@ -36,44 +36,16 @@ $PAGE->set_title($pagetitle);
 $PAGE->set_pagelayout('admin');
 $PAGE->set_heading($pagetitle);
 
-$form = null;
-if (optional_param('needsconfirm', 0, PARAM_BOOL)) {
-    $form = new \tool_lpsync\form\import($url->out(false));
-} else if (optional_param('confirm', 0, PARAM_BOOL)) {
-    $importer = new \tool_lpsync\framework_importer();
-    $form = new \tool_lpsync\form\import_confirm(null, $importer);
-} else {
-    $form = new \tool_lpsync\form\import($url->out(false));
-}
+$importer = new \tool_lpsync\framework_importer();
 
-if ($form->is_cancelled()) {
-    $form = new \tool_lpsync\form\import($url->out(false));
-} else if ($data = $form->get_data()) {
-    require_sesskey();
+$form = new \tool_lpsync\form\import_config(null, $importer->config);
 
-    if ($data->confirm) {
-        $importid = $data->importid;
-        $importer = new \tool_lpsync\framework_importer(null, null, null, $importid, $data);
+if (!$form->is_cancelled()) {
 
-        $error = $importer->get_error();
-        if ($error) {
-            $form = new \tool_lpsync\form\import($url->out(false));
-            $form->set_import_error($error);
-        } else {
-            $framework = $importer->import();
-            redirect(new moodle_url('continue.php', array('id' => $framework->get_id())));
-            die();
-        }
-    } else {
-        $text = $form->get_file_content('importfile');
-        $encoding = $data->encoding;
-        $delimiter = $data->delimiter_name;
-        $importer = new \tool_lpsync\framework_importer($text, $encoding, $delimiter);
-        $confirmform = new \tool_lpsync\form\import_confirm(null, $importer);
-        $form = $confirmform;
-        
-        $pagetitle = get_string('confirmcolumnmappings', 'tool_lpsync');
-    }
+    // store the new config    
+    
+    
+    $pagetitle = get_string('confirmcolumnmappings', 'tool_lpsync');
 }
 
 echo $OUTPUT->header();
