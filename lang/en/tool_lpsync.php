@@ -28,6 +28,15 @@ $string['invalidimportfile'] = 'File format is invalid.';
 $string['noframeworks'] = 'No competency frameworks have been created yet';
 $string['import'] = 'Import';
 
+$string['db_header'] = 'External database configuration';
+$string['db_host'] = 'Host';
+$string['db_type'] = 'Type';
+$string['db_user'] = 'Username';
+$string['db_pass'] = 'Password';
+$string['db_name'] = 'Database name';
+$string['db_table'] = 'Table';
+
+$string['mappings_header'] = 'Field mappings';
 $string['parentidnumber'] = 'Parent id number';
 $string['idnumber'] = 'Id number';
 $string['shortname'] = 'Shortname';
@@ -50,3 +59,15 @@ $string['csvdelimiter'] = 'CSV delimiter';
 $string['csvdelimiter_help'] = 'CSV delimiter of the CSV file.';
 $string['encoding'] = 'Encoding';
 $string['encoding_help'] = 'Encoding of the CSV file.';
+// configuration form help strings
+$string['parentidnumber_help'] = 'Competencies are arranged in a tree. This field indicates which competency is the parent of the current row.';
+$string['idnumber_help'] = 'A string that uniquely identifies this competency in this framework';
+$string['shortname_help'] = 'A short name for the competency';
+$string['description_help'] = 'A longer description for the competency';
+$string['descriptionformat_help'] = 'A number representing the format of the text in the description. Valid options are: 0 = Moodle format, 1 = HTML, 2 = Plain text, 3 = Wiki format, 4 = Markdown';
+$string['scalevalues_help'] = 'Only required on the framework row. Defines a comma separated list of options used to grade the competencies';
+$string['scaleconfiguration_help'] = 'A json encoded object used to define the scale configuration.';
+$string['relatedidnumbers_help'] = 'A comma separated list of id numbers belonging to competencies related to the current row';
+$string['isframework_help'] = 'Must be 1 for a single row in the framework which defines the name and description of the entire framework';
+$string['taxonomy_help'] = 'Defined for the framework row, defines the lang string keys used to describe competencies at each level of the framework';
+
