@@ -53,51 +53,76 @@ class framework_importer {
     var $importer = null;
     var $foundheaders = array();
 
-    /** @var External database type */
-    var $db_type = '';
-    /** @var External database location */
-    var $db_host = '';
-    /** @var External database user */
-    var $db_user = '';
-    /** @var External database password */
-    var $db_password = '';
-    /** @var External database name */
-    var $db_database = '';
-    /** @var External database table containing competency data */
-    var $db_table ='';
+    /** @var config */
+    var $config = array();
     
     /**
-     * Loads up settings and determines if anything has been configured or not
+     * Returns true if the database is configured, else returns false
      * 
      * @return bool
      */
     function is_configured() {
+        $result = true;
+        
+        if(count($this->config) == 0) {
+            $result = false;
+        }
+     
+        return $result;
+    }
+    
+    /**
+     * Loads up settings and determines if anything has been configured or not. If there is no configuration data at all then
+     * it populates its settings table with its defaults.
+     * 
+     * @return bool
+     */
+    function init() {
         global $DB;
         
         // Get details of external database from our config. Currently we do this one record at a time, which is a little clunky:
-        $this->db_type = $DB->get_record('tool_lpsync', "type");
-        if($this->db_type == false) {
-            return false;
+        $records = $DB->get_records('tool_lpsync', null, null);
+    
+        // if there aren't any entries in the table then we need to prepare them:
+        if(count($records) == 0) {
+            
+            $rows = array(  'type' => 'mysqli', 
+                            'host' => 'localhost', 
+                            'user' => '',
+                            'pass' => '',
+                            'name' => '',
+                            'table' => '',
+                            
+                            'parentidnumber' => 'parentidnumber',
+                            'idnumber' => 'idnumber',
+                            'shortname' => 'shortname', 
+                            'description' => 'description',
+                            'descriptionformat' => 'descriptionformat',
+                            'scalevalues' => 'scalevalues',
+                            'scaleconfiguration' => 'scaleconfiguration',
+                    
+                            'ruletype' => '',
+                            'ruleoutcome' => '',
+                            'ruleconfig' => '',
+                    
+                            'relatedidnumbers' => 'relatedidnumbers',
+                            'isframework' => 'isframework',
+                            'taxonomy' => 'taxonomy'
+                    );
+            
+            foreach($rows as $name => $value) {
+                 $object = new stdClass();
+                 $object->name = $name;
+                 $object->value = $value;
+                 $DB->insert_record('tool_lpsync', $object);
+            }
+            
+            // try that again
+            $records = $DB->get_records('tool_lpsync');    
         }
-        $this->db_host = $DB->get_record('tool_lpsync', "host");
-        if($this->db_host == false) {
-            return false;
-        }
-        $this->db_user = $DB->get_record('tool_lpsync', "user");
-        if($this->db_user == false) {
-            return false;
-        }
-        $this->db_password = $DB->get_record('tool_lpsync', "password");
-        if($this->db_password == false) {
-            return false;
-        }
-        $this->db_name = $DB->get_record('tool_lpsync', "db");
-        if($this->db_database == false) {
-            return false;
-        }
-        $this->db_table = $DB->get_record('tool_lpsync', "table");
-        if($this->db_table == false) {
-            return false;
+        
+        foreach($records as $record) {
+            $this->config[$record->name] = $record->value;
         }
         
         return true;
@@ -109,7 +134,7 @@ class framework_importer {
      * @return ADOConnection
      * @throws moodle_exception
      */
-    function db_init() {
+    function db_connect() {
         global $CFG;
         
         if ($this->is_configured() === false) {
@@ -175,7 +200,6 @@ class framework_importer {
             get_string('ruleoutcome', 'tool_lpsync'),
             get_string('ruleconfig', 'tool_lpsync'),
             get_string('relatedidnumbers', 'tool_lpsync'),
-            get_string('exportid', 'tool_lpsync'),
             get_string('isframework', 'tool_lpsync'),
             get_string('taxonomy', 'tool_lpsync'),
         );
@@ -231,110 +255,117 @@ class framework_importer {
     }
 
     /**
-     * Constructor - parses the raw text for sanity.
+     * Constructor - initialises the DB connection.
      */
-    public function __construct($text = null, $encoding = null, $delimiter = null, $importid = 0, $mappingdata = null) {
+    public function parse($text = null, $encoding = null, $delimiter = null, $importid = 0, $mappingdata = null) {
         global $CFG;
-
-        // The format of our records is:
-        // Parent ID number, ID number, Shortname, Description, Description format, Scale values, Scale configuration, Rule type, Rule outcome, Rule config, Is framework, Taxonomy
-
-        // The idnumber is concatenated with the category names.
-        require_once($CFG->libdir . '/csvlib.class.php');
-
-        $type = 'competency_framework';
-
-        if (!$importid) {
-            if ($text === null) {
-                return;
-            }
-            $this->importid = csv_import_reader::get_new_iid($type);
-
-            $this->importer = new csv_import_reader($this->importid, $type);
-
-            if (!$this->importer->load_csv_content($text, $encoding, $delimiter)) {
-                $this->fail(get_string('invalidimportfile', 'tool_lpsync'));
-                $this->importer->cleanup();
-                return;
-            }
-            
-        } else {
-            $this->importid = $importid;
-
-            $this->importer = new csv_import_reader($this->importid, $type);
-        }
-
-
-        if (!$this->importer->init()) {
-            $this->fail(get_string('invalidimportfile', 'tool_lpsync'));
-            $this->importer->cleanup();
-            return;
-        }
-
-        $this->foundheaders = $this->importer->get_columns();
-
-        $domainid = 1;
-
-        $flat = array();
-        $framework = null;
-
-        while ($row = $this->importer->next()) {
-            $mapping = $this->read_mapping_data($mappingdata);
-
-            $parentidnumber = $this->get_row_data($row, $mapping['parentidnumber']);
-            $idnumber = $this->get_row_data($row, $mapping['idnumber']);
-            $shortname = $this->get_row_data($row, $mapping['shortname']);
-            $description = $this->get_row_data($row, $mapping['description']);
-            $descriptionformat = $this->get_row_data($row, $mapping['descriptionformat']);
-            $scalevalues = $this->get_row_data($row, $mapping['scalevalues']);
-            $scaleconfiguration = $this->get_row_data($row, $mapping['scaleconfiguration']);
-            $ruletype = $this->get_row_data($row, $mapping['ruletype']);
-            $ruleoutcome = $this->get_row_data($row, $mapping['ruleoutcome']);
-            $ruleconfig = $this->get_row_data($row, $mapping['ruleconfig']);
-            $relatedidnumbers = $this->get_row_data($row, $mapping['relatedidnumbers']);
-            $exportid = $this->get_row_data($row, $mapping['exportid']);
-            $isframework = $this->get_row_data($row, $mapping['isframework']);
-            $taxonomies = $this->get_row_data($row, $mapping['taxonomies']);
-            
-            if ($isframework) {
-                $framework = new stdClass();
-                $framework->idnumber = shorten_text(clean_param($idnumber, PARAM_TEXT), 100);
-                $framework->shortname = shorten_text(clean_param($shortname, PARAM_TEXT), 100);
-                $framework->description = clean_param($description, PARAM_RAW);
-                $framework->descriptionformat = clean_param($descriptionformat, PARAM_INT);
-                $framework->scalevalues = $scalevalues;
-                $framework->scaleconfiguration = $scaleconfiguration;
-                $framework->taxonomies = $taxonomies;
-                $framework->children = array();
-            } else {
-                $competency = new stdClass();
-                $competency->parentidnumber = clean_param($parentidnumber, PARAM_TEXT);
-                $competency->idnumber = shorten_text(clean_param($idnumber, PARAM_TEXT), 100);
-                $competency->shortname = shorten_text(clean_param($shortname, PARAM_TEXT), 100);
-                $competency->description = clean_param($description, PARAM_RAW);
-                $competency->descriptionformat = clean_param($descriptionformat, PARAM_INT);
-                $competency->ruletype = $ruletype;
-                $competency->ruleoutcome = clean_param($ruleoutcome, PARAM_INT);
-                $competency->ruleconfig = $ruleconfig;
-                $competency->relatedidnumbers = $relatedidnumbers;
-                $competency->exportid = $exportid;
-                $competency->scalevalues = $scalevalues;
-                $competency->scaleconfiguration = $scaleconfiguration;
-                $competency->children = array();
-                $flat[$idnumber] = $competency;
-            }
-        }
-        $this->flat = $flat;
-        $this->framework = $framework;
-
-        $this->importer->close();
-        if ($this->framework == null) {
-            $this->fail(get_string('invalidimportfile', 'tool_lpsync'));
-            return;
-        } else {
-            // Build a tree from this flat list.
-            $this->add_children($this->framework, '');    
-        }
+        
+         // The format of our records is:
+         // Parent ID number, ID number, Shortname, Description, Description format, Scale values, Scale configuration, Rule type, Rule outcome, Rule config, Is framework, Taxonomy
+         
+         // The idnumber is concatenated with the category names.
+         require_once($CFG->libdir . '/csvlib.class.php');
+         
+         $type = 'competency_framework';
+         
+         if (!$importid) {
+         if ($text === null) {
+         return;
+         }
+         $this->importid = csv_import_reader::get_new_iid($type);
+         
+         $this->importer = new csv_import_reader($this->importid, $type);
+         
+         if (!$this->importer->load_csv_content($text, $encoding, $delimiter)) {
+         $this->fail(get_string('invalidimportfile', 'tool_lpsync'));
+         $this->importer->cleanup();
+         return;
+         }
+         
+         } else {
+         $this->importid = $importid;
+         
+         $this->importer = new csv_import_reader($this->importid, $type);
+         }
+         
+         
+         if (!$this->importer->init()) {
+         $this->fail(get_string('invalidimportfile', 'tool_lpsync'));
+         $this->importer->cleanup();
+         return;
+         }
+         
+         $this->foundheaders = $this->importer->get_columns();
+         
+         $domainid = 1;
+         
+         $flat = array();
+         $framework = null;
+         
+         while ($row = $this->importer->next()) {
+         $mapping = $this->read_mapping_data($mappingdata);
+         
+         $parentidnumber = $this->get_row_data($row, $mapping['parentidnumber']);
+         $idnumber = $this->get_row_data($row, $mapping['idnumber']);
+         $shortname = $this->get_row_data($row, $mapping['shortname']);
+         $description = $this->get_row_data($row, $mapping['description']);
+         $descriptionformat = $this->get_row_data($row, $mapping['descriptionformat']);
+         $scalevalues = $this->get_row_data($row, $mapping['scalevalues']);
+         $scaleconfiguration = $this->get_row_data($row, $mapping['scaleconfiguration']);
+         $ruletype = $this->get_row_data($row, $mapping['ruletype']);
+         $ruleoutcome = $this->get_row_data($row, $mapping['ruleoutcome']);
+         $ruleconfig = $this->get_row_data($row, $mapping['ruleconfig']);
+         $relatedidnumbers = $this->get_row_data($row, $mapping['relatedidnumbers']);
+         $exportid = $this->get_row_data($row, $mapping['exportid']);
+         $isframework = $this->get_row_data($row, $mapping['isframework']);
+         $taxonomies = $this->get_row_data($row, $mapping['taxonomies']);
+         
+         if ($isframework) {
+         $framework = new stdClass();
+         $framework->idnumber = shorten_text(clean_param($idnumber, PARAM_TEXT), 100);
+         $framework->shortname = shorten_text(clean_param($shortname, PARAM_TEXT), 100);
+         $framework->description = clean_param($description, PARAM_RAW);
+         $framework->descriptionformat = clean_param($descriptionformat, PARAM_INT);
+         $framework->scalevalues = $scalevalues;
+         $framework->scaleconfiguration = $scaleconfiguration;
+         $framework->taxonomies = $taxonomies;
+         $framework->children = array();
+         } else {
+         $competency = new stdClass();
+         $competency->parentidnumber = clean_param($parentidnumber, PARAM_TEXT);
+         $competency->idnumber = shorten_text(clean_param($idnumber, PARAM_TEXT), 100);
+         $competency->shortname = shorten_text(clean_param($shortname, PARAM_TEXT), 100);
+         $competency->description = clean_param($description, PARAM_RAW);
+         $competency->descriptionformat = clean_param($descriptionformat, PARAM_INT);
+         $competency->ruletype = $ruletype;
+         $competency->ruleoutcome = clean_param($ruleoutcome, PARAM_INT);
+         $competency->ruleconfig = $ruleconfig;
+         $competency->relatedidnumbers = $relatedidnumbers;
+         $competency->exportid = $exportid;
+         $competency->scalevalues = $scalevalues;
+         $competency->scaleconfiguration = $scaleconfiguration;
+         $competency->children = array();
+         $flat[$idnumber] = $competency;
+         }
+         }
+         $this->flat = $flat;
+         $this->framework = $framework;
+         
+         $this->importer->close();
+         if ($this->framework == null) {
+         $this->fail(get_string('invalidimportfile', 'tool_lpsync'));
+         return;
+         } else {
+         // Build a tree from this flat list.
+         $this->add_children($this->framework, '');
+         }
+    }
+    
+    /**
+     * Constructor - initialise this instance.
+     */
+    public function __construct() {
+        $this->init();        
     }
 
     /**
