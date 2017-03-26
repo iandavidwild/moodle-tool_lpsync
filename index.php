@@ -42,10 +42,16 @@ $form = new \tool_lpsync\form\import_config(null, $importer->config);
 
 if (!$form->is_cancelled()) {
 
-    // store the new config    
-    
-    
-    $pagetitle = get_string('confirmcolumnmappings', 'tool_lpsync');
+    // store the new config if necessary
+    $form_data = $form->get_data();
+    if($form_data != null) {
+        $importer->update_config($form_data);
+        
+        // Perform the sync at this point
+        $importer->synchronize();
+        // ... and then import the framework
+        $importer->import();
+    }
 }
 
 echo $OUTPUT->header();
