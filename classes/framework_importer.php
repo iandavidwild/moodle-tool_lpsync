@@ -22,9 +22,12 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+
 namespace tool_lpsync;
 
 defined('MOODLE_INTERNAL') || die('Direct access to this script is forbidden.');
+
+require_once($CFG->libdir.'/adodb/adodb.inc.php');
 
 use core_competency\api;
 use grade_scale;
@@ -129,6 +132,27 @@ class framework_importer {
     }
     
     /**
+     * Stores importer configuration
+     * 
+     * @param stdClass $data - form data
+     */
+    public function update_config($data) {
+        global $DB;
+        
+        // what settings do we need to store?
+        $settings = array('type', 'host', 'user', 'pass', 'name', 'table', 'parentidnumber', 
+                'idnumber', 'shortname', 'description', 'descriptionformat', 'scalevalues', 'scaleconfiguration',
+                'ruletype', 'ruleoutcome', 'ruleconfig', 'relatedidnumbers', 'isframework', 'taxonomy');
+        
+        foreach($settings as $setting) {
+            // only update a current record    
+            $sql = 'UPDATE {tool_lpsync} SET `value` = ? WHERE `name` = ?';
+            $params = array($data->{$setting}, $setting);
+            $DB->execute($sql, $params);
+        }
+    }
+    
+    /**
      * Connect to external database.
      *
      * @return ADOConnection
@@ -142,40 +166,15 @@ class framework_importer {
         }
         
         // Connect to the external database (forcing new connection).
-        $authdb = ADONewConnection($this->db_type);
+        $authdb = ADONewConnection($this->config['type']);
         if (!empty($CFG->debuglpsync)) {
             $authdb->debug = true;
-            ob_start(); //Start output buffer to allow later use of the page headers.
         }
         
-        $authdb->Connect($this->db_host, $this->db_user, $this->db_password, $this->db_name, true);
+        $authdb->Connect($this->config['host'], $this->config['user'], $this->config['pass'], $this->config['name'], true);
         $authdb->SetFetchMode(ADODB_FETCH_ASSOC);
         
         return $authdb;
-    }
-    
-    /**
-     * Returns attribute mappings between moodle capabilities and those listed in external db.
-     *
-     * @return array
-     */
-    function db_attributes() {
-        $moodleattributes = array();
-        // If we have custom fields then merge them with user fields.
-        $customfields = $this->get_custom_user_profile_fields();
-        if (!empty($customfields) && !empty($this->userfields)) {
-            $userfields = array_merge($this->userfields, $customfields);
-        } else {
-            $userfields = $this->userfields;
-        }
-        
-        foreach ($userfields as $field) {
-            if (!empty($this->config->{"field_map_$field"})) {
-                $moodleattributes[$field] = $this->config->{"field_map_$field"};
-            }
-        }
-        $moodleattributes['username'] = $this->config->fielduser;
-        return $moodleattributes;
     }
     
     public function fail($msg) {
@@ -209,156 +208,112 @@ class framework_importer {
         return $this->foundheaders;
     }
 
-    private function read_mapping_data($data) {
-        if ($data) {
+    private function read_mapping_data() {
+        if ($this->config) {
             return array(
-                'parentidnumber' => $data->header0,   
-                'idnumber' => $data->header1,
-                'shortname' => $data->header2,
-                'description' => $data->header3,
-                'descriptionformat' => $data->header4,
-                'scalevalues' => $data->header5,
-                'scaleconfiguration' => $data->header6,
-                'ruletype' => $data->header7,
-                'ruleoutcome' => $data->header8,
-                'ruleconfig' => $data->header9,
-                'relatedidnumbers' => $data->header10,
-                'exportid' => $data->header11,
-                'isframework' => $data->header12,
-                'taxonomies' => $data->header13
-            );
-        } else {
-            return array(
-                'parentidnumber' => 0,   
-                'idnumber' => 1,
-                'shortname' => 2,
-                'description' => 3,
-                'descriptionformat' => 4,
-                'scalevalues' => 5,
-                'scaleconfiguration' => 6,
-                'ruletype' => 7,
-                'ruleoutcome' => 8,
-                'ruleconfig' => 9,
-                'relatedidnumbers' => 10,
-                'exportid' => 11,
-                'isframework' => 12,
-                'taxonomies' => 13
+                'parentidnumber' => $this->config['parentidnumber'],   
+                'idnumber' => $this->config['idnumber'],
+                'shortname' => $this->config['shortname'],
+                'description' => $this->config['description'],
+                'descriptionformat' => $this->config['descriptionformat'],
+                'scalevalues' => $this->config['scalevalues'],
+                'scaleconfiguration' => $this->config['scaleconfiguration'],
+                'ruletype' => $this->config['ruletype'],
+                'ruleoutcome' => $this->config['ruleoutcome'],
+                'ruleconfig' => $this->config['ruleconfig'],
+                'relatedidnumbers' => $this->config['relatedidnumbers'],
+                'isframework' => $this->config['isframework'],
+                'taxonomy' => $this->config['taxonomy']
             );
         }
-    }
-
-    private function get_row_data($row, $index) {
-        if ($index < 0) {
-            return '';
-        }
-        return isset($row[$index]) ? $row[$index] : '';
     }
 
     /**
-     * Constructor - initialises the DB connection.
+     * Parse - takes loaded competency data and stores in Moodle.
      */
-    public function parse($text = null, $encoding = null, $delimiter = null, $importid = 0, $mappingdata = null) {
+    public function synchronize($text = null, $encoding = null, $delimiter = null, $importid = 0, $mappingdata = null) {
         global $CFG;
         
-         // The format of our records is:
-         // Parent ID number, ID number, Shortname, Description, Description format, Scale values, Scale configuration, Rule type, Rule outcome, Rule config, Is framework, Taxonomy
-         
-         // The idnumber is concatenated with the category names.
-         require_once($CFG->libdir . '/csvlib.class.php');
-         
-         $type = 'competency_framework';
-         
-         if (!$importid) {
-         if ($text === null) {
-         return;
-         }
-         $this->importid = csv_import_reader::get_new_iid($type);
-         
-         $this->importer = new csv_import_reader($this->importid, $type);
-         
-         if (!$this->importer->load_csv_content($text, $encoding, $delimiter)) {
-         $this->fail(get_string('invalidimportfile', 'tool_lpsync'));
-         $this->importer->cleanup();
-         return;
-         }
-         
-         } else {
-         $this->importid = $importid;
-         
-         $this->importer = new csv_import_reader($this->importid, $type);
-         }
-         
-         
-         if (!$this->importer->init()) {
-         $this->fail(get_string('invalidimportfile', 'tool_lpsync'));
-         $this->importer->cleanup();
-         return;
-         }
-         
-         $this->foundheaders = $this->importer->get_columns();
-         
-         $domainid = 1;
-         
-         $flat = array();
-         $framework = null;
-         
-         while ($row = $this->importer->next()) {
-         $mapping = $this->read_mapping_data($mappingdata);
-         
-         $parentidnumber = $this->get_row_data($row, $mapping['parentidnumber']);
-         $idnumber = $this->get_row_data($row, $mapping['idnumber']);
-         $shortname = $this->get_row_data($row, $mapping['shortname']);
-         $description = $this->get_row_data($row, $mapping['description']);
-         $descriptionformat = $this->get_row_data($row, $mapping['descriptionformat']);
-         $scalevalues = $this->get_row_data($row, $mapping['scalevalues']);
-         $scaleconfiguration = $this->get_row_data($row, $mapping['scaleconfiguration']);
-         $ruletype = $this->get_row_data($row, $mapping['ruletype']);
-         $ruleoutcome = $this->get_row_data($row, $mapping['ruleoutcome']);
-         $ruleconfig = $this->get_row_data($row, $mapping['ruleconfig']);
-         $relatedidnumbers = $this->get_row_data($row, $mapping['relatedidnumbers']);
-         $exportid = $this->get_row_data($row, $mapping['exportid']);
-         $isframework = $this->get_row_data($row, $mapping['isframework']);
-         $taxonomies = $this->get_row_data($row, $mapping['taxonomies']);
-         
-         if ($isframework) {
-         $framework = new stdClass();
-         $framework->idnumber = shorten_text(clean_param($idnumber, PARAM_TEXT), 100);
-         $framework->shortname = shorten_text(clean_param($shortname, PARAM_TEXT), 100);
-         $framework->description = clean_param($description, PARAM_RAW);
-         $framework->descriptionformat = clean_param($descriptionformat, PARAM_INT);
-         $framework->scalevalues = $scalevalues;
-         $framework->scaleconfiguration = $scaleconfiguration;
-         $framework->taxonomies = $taxonomies;
-         $framework->children = array();
-         } else {
-         $competency = new stdClass();
-         $competency->parentidnumber = clean_param($parentidnumber, PARAM_TEXT);
-         $competency->idnumber = shorten_text(clean_param($idnumber, PARAM_TEXT), 100);
-         $competency->shortname = shorten_text(clean_param($shortname, PARAM_TEXT), 100);
-         $competency->description = clean_param($description, PARAM_RAW);
-         $competency->descriptionformat = clean_param($descriptionformat, PARAM_INT);
-         $competency->ruletype = $ruletype;
-         $competency->ruleoutcome = clean_param($ruleoutcome, PARAM_INT);
-         $competency->ruleconfig = $ruleconfig;
-         $competency->relatedidnumbers = $relatedidnumbers;
-         $competency->exportid = $exportid;
-         $competency->scalevalues = $scalevalues;
-         $competency->scaleconfiguration = $scaleconfiguration;
-         $competency->children = array();
-         $flat[$idnumber] = $competency;
-         }
-         }
-         $this->flat = $flat;
-         $this->framework = $framework;
-         
-         $this->importer->close();
-         if ($this->framework == null) {
-         $this->fail(get_string('invalidimportfile', 'tool_lpsync'));
-         return;
-         } else {
-         // Build a tree from this flat list.
-         $this->add_children($this->framework, '');
-         }
+        // The format of our records is:
+        // Parent ID number, ID number, Shortname, Description, Description format, Scale values, Scale configuration, Rule type, Rule outcome, Rule config, Is framework, Taxonomy
+        
+        $authdb = $this->db_connect();
+        
+        if($authdb) {
+            // get all rows as a two dimentional array
+            $table = $this->config['table'];
+            $sql = "SELECT * FROM $table WHERE 1=1";
+            $rs = $authdb->Execute($sql);
+            
+            if($rs) {
+                $rows = $rs->GetRows();
+                
+                $rs->Close();
+                
+                $domainid = 1;
+                
+                $flat = array();
+                $framework = null;
+                
+                $mapping = $this->read_mapping_data();
+                
+                foreach($rows as $row) {
+                    $parentidnumber = $row[$mapping['parentidnumber']];
+                    $idnumber = $row[$mapping['idnumber']];
+                    $shortname = $row[$mapping['shortname']];
+                    $description = $row[$mapping['description']];
+                    $descriptionformat = $row[$mapping['descriptionformat']];
+                    $scalevalues = $row[$mapping['scalevalues']];
+                    $scaleconfiguration = $row[$mapping['scaleconfiguration']];
+                    $ruletype = $row[$mapping['ruletype']];
+                    $ruleoutcome = $row[$mapping['ruleoutcome']];
+                    $ruleconfig = $row[$mapping['ruleconfig']];
+                    $relatedidnumbers = $row[$mapping['relatedidnumbers']];
+                    $isframework = $row[$mapping['isframework']];
+                    $taxonomies = $row[$mapping['taxonomy']];
+                    
+                    if ($isframework) {
+                        $framework = new stdClass();
+                        $framework->idnumber = shorten_text(clean_param($idnumber, PARAM_TEXT), 100);
+                        $framework->shortname = shorten_text(clean_param($shortname, PARAM_TEXT), 100);
+                        $framework->description = clean_param($description, PARAM_RAW);
+                        $framework->descriptionformat = clean_param($descriptionformat, PARAM_INT);
+                        $framework->scalevalues = $scalevalues;
+                        $framework->scaleconfiguration = $scaleconfiguration;
+                        $framework->taxonomies = $taxonomies;
+                        $framework->children = array();
+                    } else {
+                        $competency = new stdClass();
+                        $competency->parentidnumber = clean_param($parentidnumber, PARAM_TEXT);
+                        $competency->idnumber = shorten_text(clean_param($idnumber, PARAM_TEXT), 100);
+                        $competency->shortname = shorten_text(clean_param($shortname, PARAM_TEXT), 100);
+                        $competency->description = clean_param($description, PARAM_RAW);
+                        $competency->descriptionformat = clean_param($descriptionformat, PARAM_INT);
+                        $competency->ruletype = $ruletype;
+                        $competency->ruleoutcome = clean_param($ruleoutcome, PARAM_INT);
+                        $competency->ruleconfig = $ruleconfig;
+                        $competency->relatedidnumbers = $relatedidnumbers;
+                        $competency->scalevalues = $scalevalues;
+                        $competency->scaleconfiguration = $scaleconfiguration;
+                        $competency->children = array();
+                        $flat[$idnumber] = $competency;
+                    }
+                }
+                
+                $this->flat = $flat;
+                $this->framework = $framework;
+                
+                if ($this->framework == null) {
+                    $this->fail(get_string('invalidimportdata', 'tool_lpsync'));
+                    return;
+                } else {
+                    // Build a tree from this flat list.
+                    $this->add_children($this->framework, '');
+                }
+            }
+            
+            $authdb->Close();
+        }
     }
     
     /**
