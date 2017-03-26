@@ -24,7 +24,7 @@
 
 $string['pluginname'] = 'Competency framework sync';
 $string['importfile'] = 'CSV framework description file';
-$string['invalidimportfile'] = 'File format is invalid.';
+$string['invalidimportdata'] = 'Data format is invalid.';
 $string['noframeworks'] = 'No competency frameworks have been created yet';
 $string['import'] = 'Import';
 
@@ -52,7 +52,7 @@ $string['taxonomy'] = 'Taxonomy';
 $string['competencyscale'] = 'Competency Scale: {$a}';
 $string['exportid'] = 'Exported id (optional)';
 $string['competencyscaledescription'] = 'Competency scale created by import';
-$string['relatedidnumbers'] = 'Cross referenced competency id numbers';
+$string['relatedidnumbers'] = 'Cross referenced competency id numbers (optional)';
 $string['confirm'] = 'Confirm';
 $string['confirmcolumnmappings'] = 'Confirm the columns mappings';
 $string['csvdelimiter'] = 'CSV delimiter';
