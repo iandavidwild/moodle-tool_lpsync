@@ -53,7 +53,6 @@ class framework_importer {
     var $framework = array();
     var $mappings = array();
     var $importid = 0;
-    var $importer = null;
     var $foundheaders = array();
 
     /** @var config */
@@ -150,6 +149,9 @@ class framework_importer {
             $params = array($data->{$setting}, $setting);
             $DB->execute($sql, $params);
         }
+        
+        // re-initialise with the new settings
+        $this->init();
     }
     
     /**
@@ -366,9 +368,6 @@ class framework_importer {
 
         if (!empty($competency->idnumber) && !empty($competency->shortname)) {
             $comp = api::create_competency($competency);
-            if ($record->exportid) {
-                $this->mappings[$record->exportid] = $comp;
-            }
             $record->createdcomp = $comp;
             foreach ($record->children as $child) {
                 $this->create_competency($child, $comp, $framework);
@@ -482,7 +481,6 @@ class framework_importer {
             $this->set_related($record);
         }
 
-        $this->importer->cleanup();
         return $framework;
     }
 }
